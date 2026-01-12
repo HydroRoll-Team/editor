@@ -978,46 +978,7 @@
         })
 
         // Initialize
-        const initialCode = `from typing import Optional, Any, Dict
-import traceback
-import logging
-import time
-import random
-
-# 初始化复古系统核心
-# -----------------------------------
-# 加载内存模块... [OK]
-# 连接神经接口... [OK]
-
-class GenerationAPIError(Exception):
-    """
-    通用 API 异常类
-    模拟复古数据流...
-    """
-    def __init__(
-        self, 
-        message: str, 
-        details: Optional[Dict[str, Any]] = None,
-        cause: Optional[Exception] = None
-    ):
-        super().__init__(message)
-        self.message = message
-        self.details = details or {}
-
-def main_loop():
-    """
-    主循环 - 保持信号稳定
-    """
-    system_status = "ONLINE"
-    while True:
-        try:
-            # 模拟一些数据处理
-            process_data_stream()
-        except GenerationAPIError as e:
-            logging.error(f"Signal Lost: {e}")
-            break
-        
-        time.sleep(0.1)
+        const initialCode = `
 `
         createNewTab("system_core.py", initialCode);
 
