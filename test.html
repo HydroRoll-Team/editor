@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Retro Glitch IDE - Scrolling</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-twilight.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <style>
+        /* 复写 Prism 样式以适应复古风格 */
+        code[class*="language-"],
+        pre[class*="language-"] {
+            font-family: 'VT323', monospace !important;
+            font-size: 24px !important;
+            line-height: 1.5 !important;
+            text-shadow: none !important;
+            background: transparent !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        :root {
+            --bg-color: #dbe0ff;
+            --text-color: #ffffff;
+            --glow-color: rgba(255, 255, 255, 0.8);
+            --scanline-color: rgba(0, 0, 0, 0.1);
+            --glitch-red: rgba(255, 0, 0, 0.7);
+            --glitch-blue: rgba(0, 0, 255, 0.7);
+            --ui-border: rgba(255, 255, 255, 0.3);
+            --ui-active: rgba(255, 255, 255, 0.6);
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            /* 防止整个页面滚动 */
+            background-color: var(--bg-color);
+            font-family: 'VT323', monospace;
+        }
+
+        .crt-screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #111;
+            /* 移除高耗能的 SVG 滤镜，改用 CSS 模拟 */
+            /* filter: url(#curve-screen); */
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9);
+            animation: textFlicker 0.05s infinite;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            /* 改为垂直布局以容纳 Tab 和编辑器 */
+            height: 100%;
+            padding: 40px 30px;
+            box-sizing: border-box;
+            z-index: 10;
+            position: relative;
+            /* 增加透视和缩放来模拟屏幕凸起感，性能更好 */
+            transform: perspective(1000px) scale(0.98);
+            transform-origin: center;
+            /* 移除这里的文字阴影，因为现在有多个层级 */
+            text-shadow: none;
+            /* 将文字闪烁动画移到这里 */
+            animation: textFlicker 0.05s infinite;
+        }
+
+        /* --- UI Controls --- */
+        .ui-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--ui-border);
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+            text-shadow: 2px 0 var(--glitch-red), -2px 0 var(--glitch-blue);
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 2px 10px;
+            border: 1px solid var(--ui-border);
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.6);
+            position: relative;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .tab.active {
+            border-color: var(--ui-active);
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+            text-shadow: 0 0 5px var(--glow-color);
+        }
+
+        .tab-close {
+            font-size: 0.8em;
+            cursor: pointer;
+            opacity: 0.6;
+        }
+
+        .tab-close:hover {
+            color: #f99;
+            opacity: 1;
+        }
+
+        .file-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* --- Settings Modal --- */
+        .settings-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: rgba(10, 10, 20, 0.95);
+            border: 2px solid var(--ui-border);
+            padding: 20px;
+            z-index: 100;
+            color: #fff;
+            display: none;
+            /* 默认隐藏 */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            font-family: 'VT323', monospace;
+        }
+
+        .settings-modal.show {
+            display: block;
+        }
+
+        .settings-header {
+            font-size: 24px;
+            border-bottom: 1px solid var(--ui-border);
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .settings-row {
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-row label {
+            font-size: 18px;
+            color: #aaa;
+        }
+
+        .settings-row input[type="range"] {
+            width: 150px;
+            accent-color: var(--glitch-blue);
+        }
+
+        .close-btn {
+            cursor: pointer;
+            color: #f55;
+        }
+
+        .btn {
+            background: transparent;
+            border: 1px solid var(--ui-border);
+            color: var(--text-color);
+            font-family: 'VT323', monospace;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 2px 8px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 5px var(--glow-color);
+        }
+
+        .hidden-input {
+            display: none;
+        }
+
+        /* --- Editor Area --- */
+        .editor-wrapper {
+            position: relative;
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            /* 内容由内部滚动 */
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            /* 辅助边框 */
+        }
+
+        /* 行号区域 */
+        .line-numbers {
+            width: 50px;
+            flex-shrink: 0;
+            text-align: right;
+            padding-right: 15px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 24px;
+            line-height: 1.5;
+            user-select: none;
+            overflow: hidden;
+            height: 100%;
+            padding-top: 0;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        /* 编辑器层叠容器 */
+        .code-layer {
+            position: relative;
+            flex: 1;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* 共同的排版样式，确保 textarea 和 pre 完全重合 */
+        .code-typography {
+            display: block;
+            font-family: 'VT323', monospace;
+            font-size: 24px !important;
+            line-height: 1.5 !important;
+            padding: 0 0 0 15px;
+            /* 左侧留白 */
+            white-space: pre;
+            box-sizing: border-box;
+            border: none;
+            margin: 0;
+            width: 100%;
+            min-height: 100%;
+        }
+
+        /* 底部高亮层 */
+        .highlight-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            /* padding: 0; Removed to inherit from code-typography */
+            border: 0;
+            pointer-events: none;
+            /* 穿透点击 */
+            z-index: 1;
+            color: rgba(255, 255, 255, 0.8);
+            overflow: hidden;
+            text-shadow:
+                0 0 2px var(--glow-color),
+                0 0 8px var(--glow-color),
+                2px 0 0px var(--glitch-red),
+                -2px 0 0px var(--glitch-blue);
+        }
+
+        /* 顶部输入层 */
+        textarea.code-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            background: transparent;
+            color: transparent;
+            /* 文字透明，只显示光标 */
+            caret-color: var(--text-color);
+            /* 显示光标 */
+            outline: none;
+            resize: none;
+            overflow-y: auto;
+            /* 只有这层负责滚动 */
+            height: 100%;
+
+            text-shadow: none;
+            /* 输入层不需要发光，发光由高亮层处理 */
+            opacity: 1;
+        }
+
+        /* Hide native caret, use custom block cursor */
+        textarea.code-area {
+            caret-color: transparent;
+        }
+
+        /* Custom Block Cursor */
+        .cursor-block {
+            position: absolute;
+            width: 1ch; /* Fixed width font char width */
+            height: 1.5em; /* Match line-height */
+            background-color: var(--text-color); /* Or a specific cursor color */
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 10;
+            top: 0;
+            left: 15px; /* Initial padding offset */
+            animation: cursorBlink 1s step-end infinite;
+            /* Mix blend mode to invert text color underneath? 
+               Note: Text is in highlight layer below. Inverting might look cool. */
+            mix-blend-mode: difference; 
+        }
+
+        @keyframes cursorBlink {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 0; }
+        }
+
+        textarea.code-area::selection {
+            background: rgba(255, 255, 255, 0.2);
+            color: transparent;
+        }
+
+        /* 滚动条样式优化 */
+        textarea.code-area::-webkit-scrollbar {
+            width: 8px;
+            background: transparent;
+        }
+
+        textarea.code-area::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        /* --- 特效层 --- */
+
+        /* 1. 更加真实的扫描线 */
+        .scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+            /* 
+               自定义扫描线图案：两粗两细循环 
+               总高度 12px 为一个循环单元
+               0-3px (3px): 粗线1
+               3-4px (1px): 间隔
+               4-7px (3px): 粗线2
+               7-8px (1px): 间隔
+               8-9px (1px): 细线1
+               9-10px(1px): 间隔
+               10-11px(1px): 细线2
+               11-12px(1px): 间隔
+            */
+            background: linear-gradient(to bottom,
+                    rgba(255, 255, 255, 0) 0px,
+                    rgba(255, 255, 255, 0) 3px,
+                    rgba(0, 0, 0, 0.4) 3px,
+                    rgba(0, 0, 0, 0.4) 4px,
+
+                    rgba(255, 255, 255, 0) 4px,
+                    rgba(255, 255, 255, 0) 7px,
+                    rgba(0, 0, 0, 0.4) 7px,
+                    rgba(0, 0, 0, 0.4) 8px,
+
+                    rgba(255, 255, 255, 0) 8px,
+                    rgba(255, 255, 255, 0) 9px,
+                    rgba(0, 0, 0, 0.4) 9px,
+                    rgba(0, 0, 0, 0.4) 10px,
+
+                    rgba(255, 255, 255, 0) 10px,
+                    rgba(255, 255, 255, 0) 11px,
+                    rgba(0, 0, 0, 0.4) 11px,
+                    rgba(0, 0, 0, 0.4) 12px);
+            background-size: 100% 12px;
+            /* 设置整个图案循环高度为 12px */
+            animation: scrollScanlines 10s linear infinite;
+        }
+
+        /* 添加第二层干扰扫描线，模拟粗细不均 */
+        .scanlines::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%,
+                    rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg,
+                    rgba(255, 0, 0, 0.03),
+                    rgba(0, 255, 0, 0.01),
+                    rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 4px 100%;
+            /* 不同的尺寸制造不均匀感 */
+            z-index: 21;
+        }
+
+        /* 屏幕暗角 Vignette，模拟 CRT 玻璃厚度 */
+        .vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 30;
+            background: radial-gradient(circle, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.6) 90%, rgba(0, 0, 0, 1) 100%);
+        }
+
+        .noise {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.1;
+            z-index: 15;
+            background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+            animation: noiseMove 0.2s infinite steps(20);
+        }
+
+        .glitch-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 15px;
+            /* 加宽扫描线 */
+            background-color: rgba(255, 255, 255, 0.1);
+            z-index: 25;
+            animation: scan 5s linear infinite;
+            /* 加快一点速度以便观察 */
+            /* 增加大范围辉光，模拟电子束扫过的亮度 */
+            box-shadow: 0 0 50px 10px rgba(255, 255, 255, 0.15);
+            opacity: 1;
+        }
+
+        @keyframes scrollScanlines {
+            0% {
+                background-position: 0 0;
+            }
+
+            100% {
+                background-position: 0 100%;
+            }
+        }
+
+        @keyframes noiseMove {
+            0% {
+                transform: translate(0, 0);
+            }
+
+            10% {
+                transform: translate(-1%, -1%);
+            }
+
+            20% {
+                transform: translate(1%, 1%);
+            }
+
+            30% {
+                transform: translate(-2%, 1%);
+            }
+
+            40% {
+                transform: translate(2%, -1%);
+            }
+
+            50% {
+                transform: translate(-1%, 2%);
+            }
+
+            60% {
+                transform: translate(1%, -2%);
+            }
+
+            70% {
+                transform: translate(0, 1%);
+            }
+
+            80% {
+                transform: translate(-1%, -1%);
+            }
+
+            90% {
+                transform: translate(1%, 2%);
+            }
+
+            100% {
+                transform: translate(0, 0);
+            }
+        }
+
+        @keyframes scan {
+            0% {
+                top: -20%;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 0.8;
+            }
+
+            90% {
+                opacity: 0.8;
+            }
+
+            100% {
+                top: 120%;
+                opacity: 0;
+            }
+        }
+
+        @keyframes textFlicker {
+            0% {
+                opacity: 0.98;
+            }
+
+            5% {
+                opacity: 0.95;
+            }
+
+            10% {
+                opacity: 0.98;
+            }
+
+            100% {
+                opacity: 0.98;
+            }
+        }
+
+        /* --- Optimized Fisheye Effects --- */
+        body.fisheye-on .editor-container {
+            /* Aggressive perspective to simulate curvature */
+            transform: perspective(800px) scale(0.96) rotateX(2deg);
+            transition: transform 0.3s ease;
+        }
+
+        body.fisheye-on .crt-screen {
+             /* Optional: clip corners slightly */
+        }
+        
+        body.fisheye-on .vignette {
+            /* Intensify vignette when fisheye is on for depth */
+            background: radial-gradient(circle, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.5) 85%, rgba(0, 0, 0, 1) 100%);
+        }
+    </style>
+</head>
+
+<body>
+
+
+    <!-- SVG Filters -->
+    <svg style="position: absolute; width: 0; height: 0; overflow: hidden;" version="1.1"
+        xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="fisheye">
+                <!-- 使用极低频率的 turbulence 生成平滑的大起伏，模拟曲面畸变 -->
+                <feTurbulence type="fractalNoise" baseFrequency="0.0005 0.0005" numOctaves="1" seed="5" result="warp" />
+                <feDisplacementMap xChannelSelector="R" yChannelSelector="G" scale="40" in="SourceGraphic" in2="warp" />
+            </filter>
+        </defs>
+    </svg>
+
+    <div class="crt-screen">
+        <div class="crt-overlay"></div>
+        <div class="noise"></div>
+        <div class="scanlines"></div>
+        <!-- 增加到三条滚动扫描线，设置不同的延迟和粗细，制造无序感 -->
+        <div class="glitch-bar" style="animation-delay: 0s; height: 10px;"></div>
+        <div class="glitch-bar" style="animation-delay: -1.7s; height: 20px; opacity: 0.8;"></div>
+        <div class="glitch-bar" style="animation-delay: -3.3s; height: 5px; opacity: 0.9;"></div>
+        
+        <div class="vignette"></div>
+
+        <div class="editor-container">
+            <!-- UI Header: Tabs and Controls -->
+            <div class="ui-header">
+                <div class="tab-bar" id="tabBar">
+                    <!-- Tabs will be injected here -->
+                </div>
+                <div class="file-controls">
+                    <button class="btn" onclick="toggleSettings()">SETTINGS</button>
+                    <button class="btn" onclick="document.getElementById('fileInput').click()">OPEN</button>
+                    <button class="btn" onclick="saveCurrentFile()">SAVE</button>
+                    <button class="btn" onclick="createNewTab()">NEW</button>
+                    <input type="file" id="fileInput" class="hidden-input" onchange="handleFileOpen(this)">
+                </div>
+            </div>
+
+            <!-- Settings Modal -->
+            <div id="settingsModal" class="settings-modal">
+                <div class="settings-header">
+                    SYSTEM CONFIG
+                    <span class="close-btn" onclick="toggleSettings()">[X]</span>
+                </div>
+
+                <div class="settings-row">
+                    <label>Fisheye Distortion</label>
+                    <input type="checkbox" id="settingFisheye" onchange="updateFisheye(this.checked)" checked>
+                </div>
+
+                <div class="settings-row">
+                    <label>Theme Color</label>
+                    <input type="color" id="settingColor" value="#dbe0ff" onchange="updateTheme(this.value)">
+                </div>
+
+                <div class="settings-row">
+                    <label>Scanline Speed</label>
+                    <input type="range" min="1" max="20" value="10" oninput="updateScanlineSpeed(this.value)">
+                </div>
+
+                <div class="settings-row">
+                    <label>Pattern Density</label>
+                    <input type="range" min="2" max="20" value="12" oninput="updateScanlinePattern()">
+                </div>
+
+                <div class="settings-row">
+                    <label>Random Thickness</label>
+                    <button class="btn" onclick="updateScanlinePattern()">RANDOMIZE</button>
+                </div>
+
+                <div class="settings-row">
+                    <label>Glow Brightness</label>
+                    <input type="range" min="0" max="100" value="80" oninput="updateGlow(this.value)">
+                </div>
+            </div>
+
+            <div class="editor-wrapper">
+                <div class="line-numbers" id="lineNumbers"></div>
+                
+                <div class="code-layer">
+                    <!-- 自定义光标 -->
+                    <div id="cursorBlock" class="cursor-block"></div>
+
+                    <!-- 高亮层：展示颜色 -->
+                    <pre
+                        class="highlight-layer"><code id="highlightCode" class="language-python code-typography"></code></pre>
+
+                    <!-- 输入层：负责输入和光标，文字透明 -->
+                    <textarea class="code-area code-typography" id="codeEditor" spellcheck="false"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const textarea = document.getElementById('codeEditor')
+        const highlightCode = document.getElementById('highlightCode')
+        const lineNumbers = document.getElementById('lineNumbers')
+        const tabBar = document.getElementById('tabBar')
+        const settingsModal = document.getElementById('settingsModal')
+        const cursorBlock = document.getElementById('cursorBlock')
+
+        // --- Settings Logic ---
+        function toggleSettings() {
+            settingsModal.classList.toggle('show')
+        }
+
+        function updateFisheye(enabled) {
+            // 优化：不再使用高耗能的 SVG filter
+            // const screen = document.querySelector('.crt-screen')
+            // screen.style.filter = enabled ? 'url(#fisheye)' : 'none'
+            
+            // 而是切换 CSS 类，使用 3D 变换模拟
+            if (enabled) {
+                document.body.classList.add('fisheye-on')
+            } else {
+                document.body.classList.remove('fisheye-on')
+            }
+        }
+
+        function updateColor(color) {
+            document.documentElement.style.setProperty('--bg-color', color)
+        }
+        
+        function updateGlow(val) {
+            // val is 0-100. Default was 0.8 (80)
+            const opacity = val / 100
+            document.documentElement.style.setProperty('--glow-color', `rgba(255, 255, 255, ${opacity})`)
+            
+            // Also adjust text shadow blur radius for extra "bloom" effect if high brightness
+            if (val > 80) {
+                 const blur = 2 + (val - 80) / 5; // 2px to 6px
+                 // We can't easily change just the shadow part without complex string manipulation or more vars.
+                 // But wait, the CSS uses var(--glow-color) in the shadow definition.
+                 // text-shadow: 0 0 2px var(--glow-color), 0 0 8px var(--glow-color), ...
+                 // So changing opacity of glow-color helps.
+                 // To make it even brighter, we could add a new var for extra-bloom or just rely on alpha.
+            }
+        }
+
+        function updateScanlineSpeed(val) {
+            // Higher value = slower speed in CSS seconds? Or faster animation?
+            // Let's say val is seconds. Default 10s.
+            // If speed slider implies "speed", higher should be faster (lower seconds).
+            // Let's invert: 21 - val
+            const seconds = 21 - val
+            document.querySelector('.scanlines').style.animationDuration = `${seconds}s`
+        }
+
+        function updateScanlinePattern() {
+            const density = parseInt(document.querySelector('input[type="range"][oninput="updateScanlinePattern()"]').value)
+
+            // Use density as the total height of one repeat unit
+            // Randomly generate lines within this height
+            let stops = []
+            let currentPos = 0
+
+            // Helper to add a band
+            const addBand = (color, height) => {
+                stops.push(`${color} ${currentPos}px`)
+                currentPos += height
+                stops.push(`${color} ${currentPos}px`)
+            }
+
+            // Create a random pattern fitting into 'density' px
+            while (currentPos < density) {
+                // Random thickness: 1 to 4px
+                let thickness = Math.floor(Math.random() * 3) + 1
+                if (currentPos + thickness > density) thickness = density - currentPos
+
+                // Random type: Black gap or Transparent (white) line
+                // 0.6 probability for gap (darker screen)
+                let isGap = Math.random() > 0.4
+                let color = isGap ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0)'
+
+                addBand(color, thickness)
+            }
+
+            const css = `linear-gradient(to bottom, ${stops.join(', ')})`
+            const scanlineEl = document.querySelector('.scanlines')
+            scanlineEl.style.background = css
+            scanlineEl.style.backgroundSize = `100% ${density}px`
+        }
+
+        // --- Tab Management ---
+        let tabs = []
+        let activeTabId = null
+        let tabCounter = 0
+
+        class Tab {
+            constructor(filename, content) {
+                this.id = ++tabCounter
+                this.filename = filename
+                this.content = content
+            }
+        }
+
+        function createNewTab(filename = "untitled.py", content = "") {
+            if (!content && filename === "untitled.py") {
+                content = `# New Buffer ${tabCounter + 1}\n\ndef main():\n    print("Hello World")\n`
+            }
+
+            const tab = new Tab(filename, content)
+            tabs.push(tab)
+            renderTabs()
+            switchToTab(tab.id)
+        }
+
+        function closeTab(e, id) {
+            e.stopPropagation()
+            if (tabs.length <= 1) return // Prevent closing last tab
+
+            const index = tabs.findIndex(t => t.id === id)
+            if (index === -1) return
+
+            tabs.splice(index, 1)
+
+            // If closed active tab, switch to another
+            if (id === activeTabId) {
+                const newActive = tabs[Math.max(0, index - 1)]
+                switchToTab(newActive.id)
+            } else {
+                renderTabs()
+            }
+        }
+
+        function renderTabs() {
+            tabBar.innerHTML = tabs.map(tab => `
+            <div class="tab ${tab.id === activeTabId ? 'active' : ''}" onclick="switchToTab(${tab.id})">
+                ${tab.filename}
+                <span class="tab-close" onclick="closeTab(event, ${tab.id})">x</span>
+            </div>
+        `).join('')
+        }
+
+        function switchToTab(id) {
+            // Save current content before switching
+            if (activeTabId !== null) {
+                const currentTab = tabs.find(t => t.id === activeTabId)
+                if (currentTab) currentTab.content = textarea.value
+            }
+
+            activeTabId = id
+            const tab = tabs.find(t => t.id === id)
+            if (tab) {
+                textarea.value = tab.content
+                updateEditor() // Update highlights and lines
+                renderTabs()
+            }
+        }
+
+        // --- File I/O ---
+        function handleFileOpen(input) {
+            const file = input.files[0]
+            if (!file) return
+
+            const reader = new FileReader()
+            reader.onload = function (e) {
+                createNewTab(file.name, e.target.result)
+                input.value = '' // Reset
+            }
+            reader.readAsText(file)
+        }
+
+        function saveCurrentFile() {
+            const currentTab = tabs.find(t => t.id === activeTabId)
+            if (!currentTab) return
+
+            // Update content just in case
+            currentTab.content = textarea.value
+
+            const blob = new Blob([currentTab.content], { type: 'text/plain' })
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(blob)
+            a.download = currentTab.filename // Use tab name as filename
+            a.click()
+            URL.revokeObjectURL(a.href)
+        }
+
+        // --- Editor Logic ---
+
+        // HTML Escaping for pre block
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+        }
+
+        const updateEditor = () => {
+            const text = textarea.value
+
+            // 1. Update Highlight Code
+            // Prism requires escaped HTML, but if text ends with newline, we need to add a space so pre rendered height matches textarea
+            let codeContent = escapeHtml(text)
+            if (text[text.length - 1] === "\n") {
+                codeContent += " "
+            }
+
+            highlightCode.innerHTML = codeContent
+            // Trigger Prism Highlight
+            Prism.highlightElement(highlightCode)
+
+            // 2. Update Line Numbers
+            const numberOfLines = text.split('\n').length
+            lineNumbers.innerHTML = Array(numberOfLines)
+                .fill(0)
+                .map((_, i) => i + 1)
+                .join('<br>')
+            
+            updateCursor()
+        }
+
+        const updateCursor = () => {
+            const cursorPos = textarea.selectionStart;
+            const text = textarea.value;
+            const textBeforeCursor = text.substring(0, cursorPos);
+            const lines = textBeforeCursor.split('\n');
+            
+            // Row index (0-based)
+            const row = lines.length - 1;
+            
+            // Column index (0-based) of the current line
+            const col = lines[lines.length - 1].length;
+            
+            // Calculate pixel position
+            // We assume consistent character width (1ch) and line height (1.5em ~ 36px at 24px font)
+            // But we need to handle scroll
+            // Left padding is 15px
+            
+            // Note: scrollTop is handled by container scrolling, but cursor is absolute inside .code-layer?
+            // Wait, .code-layer has overflow:hidden, it is the container?
+            // No, .code-layer holds textarea and pre. 
+            // textarea handles scrolling. .code-layer does NOT scroll.
+            // But I made .highlight-layer width 100% height 100%. 
+            // The scroll happens INSIDE textarea.
+            // If I place cursor absolute inside .code-layer, it will NOT scroll with textarea content unless I update its top/left based on scroll.
+            
+            // Better strategy: Put cursor inside a container that scrolls?
+            // Or just update top/left subtracting scrollTop/scrollLeft.
+            
+            // Let's use subtraction.
+            const scrollTop = textarea.scrollTop;
+            const scrollLeft = textarea.scrollLeft;
+            
+            // 24px font * 1.5 line-height = 36px per line roughly. 
+            // But it's better to use 'em' in CSS or calculate.
+            // font-size is 24px. line-height is 1.5. so 1 line = 36px.
+            const lineHeight = 36; 
+            
+            // We can set top/left using calc in CSS if we pass row/col as vars, OR set pixels in JS.
+            // JS pixels is safer for scroll sync.
+            
+            // To get accurate char width, we can measure. 'VT323' 24px usually has specific width.
+            // Let's assume 1ch works well in CSS calc.
+            // left = 15px (padding) + col * 1ch - scrollLeft
+            // top = row * 1.5em - scrollTop
+            
+            cursorBlock.style.transform = `translate(calc(15px + ${col}ch - ${scrollLeft}px), calc(${row} * 1.5em - ${scrollTop}px))`
+        }
+
+        const syncScroll = () => {
+            // Sync vertical scroll
+            const scrollTop = textarea.scrollTop
+            highlightCode.parentElement.scrollTop = scrollTop
+            lineNumbers.scrollTop = scrollTop
+
+            // Sync horizontal scroll (if any)
+            const scrollLeft = textarea.scrollLeft
+            highlightCode.parentElement.scrollLeft = scrollLeft
+            
+            updateCursor()
+        }
+
+        textarea.addEventListener('input', () => {
+            updateEditor()
+            // Update tab object immediately so it doesn't get lost
+            if (activeTabId) {
+                const tab = tabs.find(t => t.id === activeTabId)
+                if (tab) tab.content = textarea.value
+            }
+        })
+
+        // Listen for cursor movement events
+        textarea.addEventListener('click', updateCursor)
+        textarea.addEventListener('keydown', (e) => {
+             // Defer update to allow selection to change
+             setTimeout(updateCursor, 0)
+        })
+        textarea.addEventListener('focus', () => cursorBlock.style.display = 'block')
+        textarea.addEventListener('blur', () => cursorBlock.style.display = 'none')
+
+        textarea.addEventListener('scroll', syncScroll)
+
+        // Fix: Tab key support
+        textarea.addEventListener('keydown', function (e) {
+            if (e.key === 'Tab') {
+                e.preventDefault()
+                const start = this.selectionStart
+                const end = this.selectionEnd
+                const spaces = "    " // 4 spaces
+                this.value = this.value.substring(0, start) + spaces + this.value.substring(end)
+                this.selectionStart = this.selectionEnd = start + 4
+                updateEditor()
+            }
+        })
+
+        // Initialize
+        const initialCode = `from typing import Optional, Any, Dict
+import traceback
+import logging
+import time
+import random
+
+# 初始化复古系统核心
+# -----------------------------------
+# 加载内存模块... [OK]
+# 连接神经接口... [OK]
+
+class GenerationAPIError(Exception):
+    """
+    通用 API 异常类
+    模拟复古数据流...
+    """
+    def __init__(
+        self, 
+        message: str, 
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
+    ):
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+def main_loop():
+    """
+    主循环 - 保持信号稳定
+    """
+    system_status = "ONLINE"
+    while True:
+        try:
+            # 模拟一些数据处理
+            process_data_stream()
+        except GenerationAPIError as e:
+            logging.error(f"Signal Lost: {e}")
+            break
+        
+        time.sleep(0.1)
+`
+        createNewTab("system_core.py", initialCode);
+
+    </script>
+
+</body>
+
+</html>
